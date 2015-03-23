@@ -445,8 +445,8 @@ country HU: DFS-ETSI
 	(57240 - 65880 @ 2160), (40), NO-OUTDOOR
 
 country HX:
-        (2300 - 2600 @ 40), (N/A, 40)
-        (5170 - 6500 @ 40), (N/A, 40)
+        (2300 - 2600 @ 40), (40)
+        (5170 - 6500 @ 40), (40)
 
 country ID: DFS-JP
 	# ref: http://www.postel.go.id/content/ID/regulasi/standardisasi/kepdir/bwa%205,8%20ghz.pdf
