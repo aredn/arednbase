@@ -1,0 +1,71 @@
+--- a/drivers/net/wireless/ath/ath9k/common-init.c
++++ b/drivers/net/wireless/ath/ath9k/common-init.c
+@@ -37,6 +37,9 @@
+  * we have calibration data for all cards though to make
+  * this static */
+ static const struct ieee80211_channel ath9k_2ghz_chantable[] = {
++	CHAN2G(2397, 40), /* Channel -2 */
++	CHAN2G(2402, 39), /* Channel -1 */
++	CHAN2G(2407, 38), /* Channel 0 */
+ 	CHAN2G(2412, 0), /* Channel 1 */
+ 	CHAN2G(2417, 1), /* Channel 2 */
+ 	CHAN2G(2422, 2), /* Channel 3 */
+@@ -68,6 +71,15 @@ static const struct ieee80211_channel at
+ 	CHAN5G(5280, 19), /* Channel 56 */
+ 	CHAN5G(5300, 20), /* Channel 60 */
+ 	CHAN5G(5320, 21), /* Channel 64 */
++	/* _We_ claim this "For the HAMS" */
++	CHAN5G(5340, 41), /* Channel 68 */
++	CHAN5G(5360, 42), /* Channel 72 */
++	CHAN5G(5380, 43), /* Channel 76 */
++	CHAN5G(5400, 44), /* Channel 80 */
++	CHAN5G(5420, 45), /* Channel 84 */
++	CHAN5G(5440, 46), /* Channel 88 */
++	CHAN5G(5460, 47), /* Channel 92 */
++	CHAN5G(5480, 48), /* Channel 96 */
+ 	/* _We_ call this "Middle band" */
+ 	CHAN5G(5500, 22), /* Channel 100 */
+ 	CHAN5G(5520, 23), /* Channel 104 */
+--- a/drivers/net/wireless/ath/ath9k/hw.h
++++ b/drivers/net/wireless/ath/ath9k/hw.h
+@@ -71,7 +71,7 @@
+ 
+ #define ATH9K_RSSI_BAD			-128
+ 
+-#define ATH9K_NUM_CHANNELS	38
++#define ATH9K_NUM_CHANNELS	49
+ 
+ /* Register read/write primitives */
+ #define REG_WRITE(_ah, _reg, _val) \
+--- a/drivers/net/wireless/ath/regd.c
++++ b/drivers/net/wireless/ath/regd.c
+@@ -33,6 +33,7 @@ static int __ath_regd_init(struct ath_re
+  */
+ 
+ /* Only these channels all allow active scan on all world regulatory domains */
++#define ATH9K_2GHZ_CHN02_00     REG_RULE(2392-5, 2407+10, 40, 0, 20, 0)
+ #define ATH9K_2GHZ_CH01_11	REG_RULE(2412-10, 2462+10, 40, 0, 20, 0)
+ 
+ /* We enable active scan on these a case by case basis by regulatory domain */
+@@ -46,16 +47,20 @@ static int __ath_regd_init(struct ath_re
+ #define ATH9K_5GHZ_5150_5350	REG_RULE(5150-10, 5240+10, 80, 0, 30, 0),\
+ 				REG_RULE(5260-10, 5350+10, 80, 0, 30,\
+ 					 NL80211_RRF_NO_IR)
++#define ATH9K_5GHZ_5320_5490    REG_RULE(5320-10, 5490+10, 80, 0, 30,\
++                                         NL80211_RRF_NO_IR)
+ #define ATH9K_5GHZ_5470_5850	REG_RULE(5470-10, 5850+10, 80, 0, 30,\
+ 					 NL80211_RRF_NO_IR)
+ #define ATH9K_5GHZ_5725_5850	REG_RULE(5725-10, 5850+10, 80, 0, 30,\
+ 					 NL80211_RRF_NO_IR)
+ 
+-#define ATH9K_2GHZ_ALL		ATH9K_2GHZ_CH01_11, \
++#define ATH9K_2GHZ_ALL		ATH9K_2GHZ_CHN02_00, \
++				ATH9K_2GHZ_CH01_11, \
+ 				ATH9K_2GHZ_CH12_13, \
+ 				ATH9K_2GHZ_CH14
+ 
+ #define ATH9K_5GHZ_ALL		ATH9K_5GHZ_5150_5350, \
++				ATH9K_5GHZ_5320_5490, \
+ 				ATH9K_5GHZ_5470_5850
+ 
+ /* This one skips what we call "mid band" */
