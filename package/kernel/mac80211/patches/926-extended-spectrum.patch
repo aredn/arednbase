@@ -1,0 +1,26 @@
+--- a/drivers/net/wireless/ath/ath9k/common-init.c
++++ b/drivers/net/wireless/ath/ath9k/common-init.c
+@@ -68,6 +68,12 @@ static const struct ieee80211_channel at
+ 	CHAN5G(5280, 19), /* Channel 56 */
+ 	CHAN5G(5300, 20), /* Channel 60 */
+ 	CHAN5G(5320, 21), /* Channel 64 */
++	/* _We_ claim this "For the HAMS" */
++	CHAN5G(5475, 42), /* Channel 95 */
++	CHAN5G(5480, 41), /* Channel 96 */
++	CHAN5G(5485, 40), /* Channel 97 */
++	CHAN5G(5490, 39), /* Channel 98 */
++	CHAN5G(5495, 38), /* Channel 99 */
+ 	/* _We_ call this "Middle band" */
+ 	CHAN5G(5500, 22), /* Channel 100 */
+ 	CHAN5G(5520, 23), /* Channel 104 */
+--- a/drivers/net/wireless/ath/ath9k/hw.h
++++ b/drivers/net/wireless/ath/ath9k/hw.h
+@@ -71,7 +71,7 @@
+ 
+ #define ATH9K_RSSI_BAD			-128
+ 
+-#define ATH9K_NUM_CHANNELS	38
++#define ATH9K_NUM_CHANNELS	43
+ 
+ /* Register read/write primitives */
+ #define REG_WRITE(_ah, _reg, _val) \
