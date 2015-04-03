@@ -314,7 +314,7 @@ tube2h |\
 wndap360 |\
 mynet-rext |\
 wp543)
-	ucidef_set_interface_lan "eth0"
+	ucidef_set_interfaces_lan_wan "eth0" "eth0.1"
 	;;
 
 dir-505-a1)
