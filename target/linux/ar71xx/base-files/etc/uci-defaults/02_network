@@ -231,10 +231,15 @@ uap-pro)
 	;;
 
 nanostation-m-xw)
-	ucidef_set_interfaces_lan_wan "eth0.1" "eth0.2"
+	ucidef_set_interfaces_lan_wan "eth0.0" "eth0.1"
 	ucidef_add_switch "switch0" "1" "1"
-	ucidef_add_switch_vlan "switch0" "1" "0t 5"
-	ucidef_add_switch_vlan "switch0" "2" "0t 1"
+	ucidef_add_switch_vlan "switch0" "0" "0t 5"
+	ucidef_add_switch_vlan "switch0" "1" "0t 1t"
+	ucidef_add_switch_vlan "switch0" "2" "0t 1t"
+	ucidef_add_switch_port "switch0" "5"
+	uci set network.@switch_port[-1].pvid='0'
+	ucidef_add_switch_port "switch0" "1"
+	uci set network.@switch_port[-1].pvid='1'
 	;;
 
 wrt160nl)
