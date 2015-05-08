@@ -28,7 +28,7 @@
 +	CHAN5G(5420, 51), /* Channel 84 */
 +	CHAN5G(5425, 52), /* Channel 85 */
 +	CHAN5G(5430, 53), /* Channel 86 */
-+	CHAN5G(5535, 54), /* Channel 87 */
++	CHAN5G(5435, 54), /* Channel 87 */
 +	CHAN5G(5440, 55), /* Channel 88 */
 +	CHAN5G(5445, 56), /* Channel 89 */
 +	CHAN5G(5450, 57), /* Channel 90 */
