@@ -48,10 +48,21 @@ static char * format_channel(int ch)
 {
 	static char buf[8];
 
-	if (ch <= 0)
-		snprintf(buf, sizeof(buf), "unknown");
-	else
-		snprintf(buf, sizeof(buf), "%d", ch);
+
+	switch (ch) {
+		case 0:
+			snprintf(buf, sizeof(buf), "unknown");
+			break;
+		case 254:
+			snprintf(buf, sizeof(buf), "-2");
+			break;
+		case 255:
+			snprintf(buf, sizeof(buf), "-1");
+			break;
+       		default:
+			snprintf(buf, sizeof(buf), "%d", ch);
+			break;
+	}
 
 	return buf;
 }
@@ -409,7 +420,7 @@ static char * print_channel(const struct iwinfo_ops *iw, const char *ifname)
 {
 	int ch;
 	if (iw->channel(ifname, &ch))
-		ch = -1;
+		ch = 0;
 
 	return format_channel(ch);
 }
@@ -644,7 +655,7 @@ static void print_freqlist(const struct iwinfo_ops *iw, const char *ifname)
 	}
 
 	if (iw->channel(ifname, &ch))
-		ch = -1;
+		ch = 0;
 
 	for (i = 0; i < len; i += sizeof(struct iwinfo_freqlist_entry))
 	{
