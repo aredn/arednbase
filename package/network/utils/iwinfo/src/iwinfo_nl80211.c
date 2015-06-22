@@ -402,12 +402,16 @@ static int nl80211_channel2freq(int channel, const char *band)
 	{
 		if (channel == 14)
 			return 2484;
+		else if (channel == 255)
+			return 2402;
+		else if (channel == 254)
+			return 2397;
 		else if (channel < 14)
 			return (channel * 5) + 2407;
 	}
 	else
 	{
-		if (channel >= 182 && channel <= 196)
+		if (channel >= 187 && channel <= 196)
 			return (channel * 5) + 4000;
 		else
 			return (channel * 5) + 5000;
