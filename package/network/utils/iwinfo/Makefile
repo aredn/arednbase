@@ -7,11 +7,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=libiwinfo
-<<<<<<< HEAD
-PKG_RELEASE:=51bbhn2
-=======
 PKG_VERSION:=2015-06-01
-PKG_RELEASE=$(PKG_SOURCE_VERSION)
+PKG_RELEASE=$(PKG_SOURCE_VERSION)-bbhn1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=http://git.openwrt.org/project/iwinfo.git
@@ -20,7 +17,6 @@ PKG_SOURCE_VERSION:=ade8b1b299cbd5748db1acf80dd3e9f567938371
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(PKG_SOURCE_VERSION).tar.gz
 PKG_MAINTAINER:=Jo-Philipp Wich <jow@openwrt.org>
 PKG_LICENSE:=GPL-2.0
->>>>>>> TestOpenwrt
 
 PKG_CONFIG_DEPENDS := \
 	CONFIG_PACKAGE_kmod-brcm-wl \
