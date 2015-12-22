@@ -62,6 +62,18 @@ tl-wdr4900-v2)
 	ucidef_add_switch_vlan "switch0" "2" "1 6"
 	;;
 
+cpe510)
+	ucidef_set_interfaces_lan_wan "eth0.0" "eth0.1"
+	ucidef_add_switch "switch0" "1" "1"
+	ucidef_add_switch_vlan "switch0" "0" "0t 5"
+	ucidef_add_switch_vlan "switch0" "1" "0t 4t"
+	ucidef_add_switch_vlan "switch0" "2" "0t 4t"
+	ucidef_add_switch_port "switch0" "5"
+	uci set network.@switch_port[-1].pvid='0'
+	ucidef_add_switch_port "switch0" "4"
+	uci set network.@switch_port[-1].pvid='1'
+	;;
+
 db120 |\
 rb-2011l | \
 rb-2011uas |\
@@ -219,10 +231,15 @@ uap-pro)
 	;;
 
 nanostation-m-xw)
-	ucidef_set_interfaces_lan_wan "eth0.1" "eth0.2"
+	ucidef_set_interfaces_lan_wan "eth0.0" "eth0.1"
 	ucidef_add_switch "switch0" "1" "1"
-	ucidef_add_switch_vlan "switch0" "1" "0t 5"
-	ucidef_add_switch_vlan "switch0" "2" "0t 1"
+	ucidef_add_switch_vlan "switch0" "0" "0t 5"
+	ucidef_add_switch_vlan "switch0" "1" "0t 1t"
+	ucidef_add_switch_vlan "switch0" "2" "0t 1t"
+	ucidef_add_switch_port "switch0" "5"
+	uci set network.@switch_port[-1].pvid='0'
+	ucidef_add_switch_port "switch0" "1"
+	uci set network.@switch_port[-1].pvid='1'
 	;;
 
 wrt160nl)
@@ -286,6 +303,7 @@ bullet-m |\
 cap4200ag |\
 eap300v2 |\
 eap7660d |\
+loco-m-xw |\
 mr600 |\
 mr600v2 |\
 rb-411 |\
@@ -314,7 +332,7 @@ tube2h |\
 wndap360 |\
 mynet-rext |\
 wp543)
-	ucidef_set_interface_lan "eth0"
+	ucidef_set_interfaces_lan_wan "eth0" "eth0.1"
 	;;
 
 dir-505-a1)
@@ -429,7 +447,7 @@ wndr3700)
 	;;
 
 *)
-	ucidef_set_interfaces_lan_wan "eth0" "eth1"
+	ucidef_set_interfaces_lan_wan "eth0" "eth0.1"
 	;;
 esac
 

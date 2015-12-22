@@ -34,7 +34,7 @@ get_status_led() {
 	aw-nr580)
 		status_led="aw-nr580:green:ready"
 		;;
-	bullet-m | rocket-m | nano-m | nanostation-m | nanostation-m-xw)
+	bullet-m | rocket-m | nano-m | nanostation-m | nanostation-m-xw | loco-m-xw)
 		status_led="ubnt:green:link4"
 		;;
 	bxu2000n-2-a1)
@@ -42,6 +42,9 @@ get_status_led() {
 		;;
 	cap4200ag)
 		status_led="senao:green:pwr"
+		;;
+	cpe510)
+		status_led="tp-link:green:link4"
 		;;
 	db120)
 		status_led="db120:green:status"
