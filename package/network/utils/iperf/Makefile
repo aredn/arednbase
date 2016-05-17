@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=iperf
 PKG_VERSION:=2.0.5
-PKG_RELEASE:=1
+PKG_RELEASE:=1bbhn1
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(BUILD_VARIANT)/$(PKG_NAME)-$(PKG_VERSION)
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
@@ -80,6 +80,8 @@ endif
 define Package/iperf/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/iperf $(1)/usr/bin/iperf
+	$(INSTALL_DIR) $(1)/etc/local/mesh-firewall
+	$(INSTALL_BIN) ./files/iperf.firewall $(1)/etc/local/mesh-firewall/20-iperf2
 endef
 Package/iperf-mt/install = $(Package/iperf/install)
 

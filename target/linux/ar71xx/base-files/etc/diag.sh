@@ -31,6 +31,9 @@ get_status_led() {
 	ap96)
 		status_led="ap96:green:led2"
 		;;
+	airrouter)
+		status_led="ubnt:green:power"
+		;;
 	aw-nr580)
 		status_led="aw-nr580:green:ready"
 		;;
