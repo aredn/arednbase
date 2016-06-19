@@ -30,6 +30,8 @@ MODULE_PARM_DESC(msg_level, "Message level (-1=defaults,0=none,...,16=all)");
 
 #define ETH_SWITCH_HEADER_LEN	2
 
+static int ag71xx_tx_packets(struct ag71xx *ag, bool flush);
+
 static inline unsigned int ag71xx_max_frame_len(unsigned int mtu)
 {
 	return ETH_SWITCH_HEADER_LEN + ETH_HLEN + VLAN_HLEN + mtu + ETH_FCS_LEN;
@@ -100,7 +102,6 @@ static void ag71xx_ring_free(struct ag71xx_ring *ring)
 static int ag71xx_ring_alloc(struct ag71xx_ring *ring)
 {
 	int err;
-	int i;
 
 	ring->desc_size = sizeof(struct ag71xx_desc);
 	if (ring->desc_size % cache_line_size()) {
@@ -124,13 +125,6 @@ static int ag71xx_ring_alloc(struct ag71xx_ring *ring)
 		goto err;
 	}
 
-	for (i = 0; i < ring->size; i++) {
-		int idx = i * ring->desc_size;
-		ring->buf[i].desc = (struct ag71xx_desc *)&ring->descs_cpu[idx];
-		DBG("ag71xx: ring %p, desc %d at %p\n",
-			ring, i, ring->buf[i].desc);
-	}
-
 	return 0;
 
 err:
@@ -144,10 +138,12 @@ static void ag71xx_ring_tx_clean(struct ag71xx *ag)
 	u32 bytes_compl = 0, pkts_compl = 0;
 
 	while (ring->curr != ring->dirty) {
+		struct ag71xx_desc *desc;
 		u32 i = ring->dirty % ring->size;
 
-		if (!ag71xx_desc_empty(ring->buf[i].desc)) {
-			ring->buf[i].desc->ctrl = 0;
+		desc = ag71xx_ring_desc(ring, i);
+		if (!ag71xx_desc_empty(desc)) {
+			desc->ctrl = 0;
 			dev->stats.tx_errors++;
 		}
 
@@ -172,10 +168,12 @@ static void ag71xx_ring_tx_init(struct ag71xx *ag)
 	int i;
 
 	for (i = 0; i < ring->size; i++) {
-		ring->buf[i].desc->next = (u32) (ring->descs_dma +
+		struct ag71xx_desc *desc = ag71xx_ring_desc(ring, i);
+
+		desc->next = (u32) (ring->descs_dma +
 			ring->desc_size * ((i + 1) % ring->size));
 
-		ring->buf[i].desc->ctrl = DESC_EMPTY;
+		desc->ctrl = DESC_EMPTY;
 		ring->buf[i].skb = NULL;
 	}
 
@@ -222,6 +220,8 @@ static int ag71xx_buffer_offset(struct ag71xx *ag)
 static bool ag71xx_fill_rx_buf(struct ag71xx *ag, struct ag71xx_buf *buf,
 			       int offset)
 {
+	struct ag71xx_ring *ring = &ag->rx_ring;
+	struct ag71xx_desc *desc = ag71xx_ring_desc(ring, buf - &ring->buf[0]);
 	void *data;
 
 	data = kmalloc(ag->rx_buf_size +
@@ -233,7 +233,7 @@ static bool ag71xx_fill_rx_buf(struct ag71xx *ag, struct ag71xx_buf *buf,
 	buf->rx_buf = data;
 	buf->dma_addr = dma_map_single(&ag->dev->dev, data, ag->rx_buf_size,
 				       DMA_FROM_DEVICE);
-	buf->desc->data = (u32) buf->dma_addr + offset;
+	desc->data = (u32) buf->dma_addr + offset;
 	return true;
 }
 
@@ -246,21 +246,24 @@ static int ag71xx_ring_rx_init(struct ag71xx *ag)
 
 	ret = 0;
 	for (i = 0; i < ring->size; i++) {
-		ring->buf[i].desc->next = (u32) (ring->descs_dma +
+		struct ag71xx_desc *desc = ag71xx_ring_desc(ring, i);
+
+		desc->next = (u32) (ring->descs_dma +
 			ring->desc_size * ((i + 1) % ring->size));
 
 		DBG("ag71xx: RX desc at %p, next is %08x\n",
-			ring->buf[i].desc,
-			ring->buf[i].desc->next);
+			desc, desc->next);
 	}
 
 	for (i = 0; i < ring->size; i++) {
+		struct ag71xx_desc *desc = ag71xx_ring_desc(ring, i);
+
 		if (!ag71xx_fill_rx_buf(ag, &ring->buf[i], offset)) {
 			ret = -ENOMEM;
 			break;
 		}
 
-		ring->buf[i].desc->ctrl = DESC_EMPTY;
+		desc->ctrl = DESC_EMPTY;
 	}
 
 	/* flush descriptors */
@@ -280,15 +283,17 @@ static int ag71xx_ring_rx_refill(struct ag71xx *ag)
 
 	count = 0;
 	for (; ring->curr - ring->dirty > 0; ring->dirty++) {
+		struct ag71xx_desc *desc;
 		unsigned int i;
 
 		i = ring->dirty % ring->size;
+		desc = ag71xx_ring_desc(ring, i);
 
 		if (!ring->buf[i].rx_buf &&
 		    !ag71xx_fill_rx_buf(ag, &ring->buf[i], offset))
 			break;
 
-		ring->buf[i].desc->ctrl = DESC_EMPTY;
+		desc->ctrl = DESC_EMPTY;
 		count++;
 	}
 
@@ -470,18 +475,18 @@ static void ag71xx_hw_init(struct ag71xx *ag)
 		reset_mask &= ~(AR71XX_RESET_GE0_PHY | AR71XX_RESET_GE1_PHY);
 
 		ath79_device_reset_set(reset_phy);
-		mdelay(50);
+		msleep(50);
 		ath79_device_reset_clear(reset_phy);
-		mdelay(200);
+		msleep(200);
 	}
 
 	ag71xx_sb(ag, AG71XX_REG_MAC_CFG1, MAC_CFG1_SR);
 	udelay(20);
 
 	ath79_device_reset_set(reset_mask);
-	mdelay(100);
+	msleep(100);
 	ath79_device_reset_clear(reset_mask);
-	mdelay(200);
+	msleep(200);
 
 	ag71xx_hw_setup(ag);
 
@@ -493,14 +498,16 @@ static void ag71xx_fast_reset(struct ag71xx *ag)
 	struct ag71xx_platform_data *pdata = ag71xx_get_pdata(ag);
 	struct net_device *dev = ag->dev;
 	u32 reset_mask = pdata->reset_bit;
-	u32 rx_ds, tx_ds;
+	u32 rx_ds;
 	u32 mii_reg;
 
 	reset_mask &= AR71XX_RESET_GE0_MAC | AR71XX_RESET_GE1_MAC;
 
+	ag71xx_hw_stop(ag);
+	wmb();
+
 	mii_reg = ag71xx_rr(ag, AG71XX_REG_MII_CFG);
 	rx_ds = ag71xx_rr(ag, AG71XX_REG_RX_DESC);
-	tx_ds = ag71xx_rr(ag, AG71XX_REG_TX_DESC);
 
 	ath79_device_reset_set(reset_mask);
 	udelay(10);
@@ -509,13 +516,17 @@ static void ag71xx_fast_reset(struct ag71xx *ag)
 
 	ag71xx_dma_reset(ag);
 	ag71xx_hw_setup(ag);
+	ag71xx_tx_packets(ag, true);
+	ag->tx_ring.curr = 0;
+	ag->tx_ring.dirty = 0;
+	netdev_reset_queue(ag->dev);
 
 	/* setup max frame length */
 	ag71xx_wr(ag, AG71XX_REG_MAC_MFL,
 		  ag71xx_max_frame_len(ag->dev->mtu));
 
 	ag71xx_wr(ag, AG71XX_REG_RX_DESC, rx_ds);
-	ag71xx_wr(ag, AG71XX_REG_TX_DESC, tx_ds);
+	ag71xx_wr(ag, AG71XX_REG_TX_DESC, ag->tx_ring.descs_dma);
 	ag71xx_wr(ag, AG71XX_REG_MII_CFG, mii_reg);
 
 	ag71xx_hw_set_macaddr(ag, dev->dev_addr);
@@ -528,9 +539,12 @@ static void ag71xx_hw_start(struct ag71xx *ag)
 
 	/* enable interrupts */
 	ag71xx_wr(ag, AG71XX_REG_INT_ENABLE, AG71XX_INT_INIT);
+
+	netif_wake_queue(ag->dev);
 }
 
-void ag71xx_link_adjust(struct ag71xx *ag)
+static void
+__ag71xx_link_adjust(struct ag71xx *ag, bool update)
 {
 	struct ag71xx_platform_data *pdata = ag71xx_get_pdata(ag);
 	u32 cfg2;
@@ -538,7 +552,7 @@ void ag71xx_link_adjust(struct ag71xx *ag)
 	u32 fifo5;
 	u32 fifo3;
 
-	if (!ag->link) {
+	if (!ag->link && update) {
 		ag71xx_hw_stop(ag);
 		netif_carrier_off(ag->dev);
 		if (netif_msg_link(ag))
@@ -590,7 +604,7 @@ void ag71xx_link_adjust(struct ag71xx *ag)
 
 	ag71xx_wr(ag, AG71XX_REG_FIFO_CFG3, fifo3);
 
-	if (pdata->set_speed)
+	if (update && pdata->set_speed)
 		pdata->set_speed(ag->speed);
 
 	ag71xx_wr(ag, AG71XX_REG_MAC_CFG2, cfg2);
@@ -599,7 +613,7 @@ void ag71xx_link_adjust(struct ag71xx *ag)
 	ag71xx_hw_start(ag);
 
 	netif_carrier_on(ag->dev);
-	if (netif_msg_link(ag))
+	if (update && netif_msg_link(ag))
 		pr_info("%s: link up (%sMbps/%s duplex)\n",
 			ag->dev->name,
 			ag71xx_speed_str(ag),
@@ -623,33 +637,65 @@ void ag71xx_link_adjust(struct ag71xx *ag)
 		ag71xx_rr(ag, AG71XX_REG_MAC_IFCTL));
 }
 
+void ag71xx_link_adjust(struct ag71xx *ag)
+{
+	__ag71xx_link_adjust(ag, true);
+}
+
+static int ag71xx_hw_enable(struct ag71xx *ag)
+{
+	int ret;
+
+	ret = ag71xx_rings_init(ag);
+	if (ret)
+		return ret;
+
+	napi_enable(&ag->napi);
+	ag71xx_wr(ag, AG71XX_REG_TX_DESC, ag->tx_ring.descs_dma);
+	ag71xx_wr(ag, AG71XX_REG_RX_DESC, ag->rx_ring.descs_dma);
+	netif_start_queue(ag->dev);
+
+	return 0;
+}
+
+static void ag71xx_hw_disable(struct ag71xx *ag)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&ag->lock, flags);
+
+	netif_stop_queue(ag->dev);
+
+	ag71xx_hw_stop(ag);
+	ag71xx_dma_reset(ag);
+
+	napi_disable(&ag->napi);
+	del_timer_sync(&ag->oom_timer);
+
+	spin_unlock_irqrestore(&ag->lock, flags);
+
+	ag71xx_rings_cleanup(ag);
+}
+
 static int ag71xx_open(struct net_device *dev)
 {
 	struct ag71xx *ag = netdev_priv(dev);
 	unsigned int max_frame_len;
 	int ret;
 
+	netif_carrier_off(dev);
 	max_frame_len = ag71xx_max_frame_len(dev->mtu);
 	ag->rx_buf_size = max_frame_len + NET_SKB_PAD + NET_IP_ALIGN;
 
 	/* setup max frame length */
 	ag71xx_wr(ag, AG71XX_REG_MAC_MFL, max_frame_len);
+	ag71xx_hw_set_macaddr(ag, dev->dev_addr);
 
-	ret = ag71xx_rings_init(ag);
+	ret = ag71xx_hw_enable(ag);
 	if (ret)
 		goto err;
 
-	napi_enable(&ag->napi);
-
-	netif_carrier_off(dev);
 	ag71xx_phy_start(ag);
-
-	ag71xx_wr(ag, AG71XX_REG_TX_DESC, ag->tx_ring.descs_dma);
-	ag71xx_wr(ag, AG71XX_REG_RX_DESC, ag->rx_ring.descs_dma);
-
-	ag71xx_hw_set_macaddr(ag, dev->dev_addr);
-
-	netif_start_queue(dev);
 
 	return 0;
 
@@ -661,24 +707,10 @@ err:
 static int ag71xx_stop(struct net_device *dev)
 {
 	struct ag71xx *ag = netdev_priv(dev);
-	unsigned long flags;
 
 	netif_carrier_off(dev);
 	ag71xx_phy_stop(ag);
-
-	spin_lock_irqsave(&ag->lock, flags);
-
-	netif_stop_queue(dev);
-
-	ag71xx_hw_stop(ag);
-	ag71xx_dma_reset(ag);
-
-	napi_disable(&ag->napi);
-	del_timer_sync(&ag->oom_timer);
-
-	spin_unlock_irqrestore(&ag->lock, flags);
-
-	ag71xx_rings_cleanup(ag);
+	ag71xx_hw_disable(ag);
 
 	return 0;
 }
@@ -697,7 +729,7 @@ static int ag71xx_fill_dma_desc(struct ag71xx_ring *ring, u32 addr, int len)
 		unsigned int cur_len = len;
 
 		i = (ring->curr + ndesc) % ring->size;
-		desc = ring->buf[i].desc;
+		desc = ag71xx_ring_desc(ring, i);
 
 		if (!ag71xx_desc_empty(desc))
 			return -1;
@@ -752,7 +784,7 @@ static netdev_tx_t ag71xx_hard_start_xmit(struct sk_buff *skb,
 				  DMA_TO_DEVICE);
 
 	i = ring->curr % ring->size;
-	desc = ring->buf[i].desc;
+	desc = ag71xx_ring_desc(ring, i);
 
 	/* setup descriptor fields */
 	n = ag71xx_fill_dma_desc(ring, (u32) dma_addr, skb->len & ag->desc_pktlen_mask);
@@ -862,14 +894,12 @@ static void ag71xx_restart_work_func(struct work_struct *work)
 {
 	struct ag71xx *ag = container_of(work, struct ag71xx, restart_work);
 
-	if (ag71xx_get_pdata(ag)->is_ar724x) {
-		ag->link = 0;
-		ag71xx_link_adjust(ag);
-		return;
-	}
-
-	ag71xx_stop(ag->dev);
-	ag71xx_open(ag->dev);
+	rtnl_lock();
+	ag71xx_hw_disable(ag);
+	ag71xx_hw_enable(ag);
+	if (ag->link)
+		__ag71xx_link_adjust(ag, false);
+	rtnl_unlock();
 }
 
 static bool ag71xx_check_dma_stuck(struct ag71xx *ag, unsigned long timestamp)
@@ -895,7 +925,7 @@ static bool ag71xx_check_dma_stuck(struct ag71xx *ag, unsigned long timestamp)
 	return false;
 }
 
-static int ag71xx_tx_packets(struct ag71xx *ag)
+static int ag71xx_tx_packets(struct ag71xx *ag, bool flush)
 {
 	struct ag71xx_ring *ring = &ag->tx_ring;
 	struct ag71xx_platform_data *pdata = ag71xx_get_pdata(ag);
@@ -907,15 +937,18 @@ static int ag71xx_tx_packets(struct ag71xx *ag)
 
 	while (ring->dirty + n != ring->curr) {
 		unsigned int i = (ring->dirty + n) % ring->size;
-		struct ag71xx_desc *desc = ring->buf[i].desc;
+		struct ag71xx_desc *desc = ag71xx_ring_desc(ring, i);
 		struct sk_buff *skb = ring->buf[i].skb;
 
-		if (!ag71xx_desc_empty(desc)) {
-			if (pdata->is_ar7240 &&
+		if (!flush && !ag71xx_desc_empty(desc)) {
+			if (pdata->is_ar724x &&
 			    ag71xx_check_dma_stuck(ag, ring->buf[i].timestamp))
 				schedule_work(&ag->restart_work);
 			break;
 		}
+
+		if (flush)
+			desc->ctrl |= DESC_EMPTY;
 
 		n++;
 		if (!skb)
@@ -963,7 +996,7 @@ static int ag71xx_rx_packets(struct ag71xx *ag, int limit)
 
 	while (done < limit) {
 		unsigned int i = ring->curr % ring->size;
-		struct ag71xx_desc *desc = ring->buf[i].desc;
+		struct ag71xx_desc *desc = ag71xx_ring_desc(ring, i);
 		struct sk_buff *skb;
 		int pktlen;
 		int err = 0;
@@ -1036,7 +1069,7 @@ static int ag71xx_poll(struct napi_struct *napi, int limit)
 	int rx_done;
 
 	pdata->ddr_flush();
-	tx_done = ag71xx_tx_packets(ag);
+	tx_done = ag71xx_tx_packets(ag, false);
 
 	DBG("%s: processing RX ring\n", dev->name);
 	rx_done = ag71xx_rx_packets(ag, limit);
@@ -1079,7 +1112,7 @@ static int ag71xx_poll(struct napi_struct *napi, int limit)
 more:
 	DBG("%s: stay in polling mode, rx=%d, tx=%d, limit=%d\n",
 			dev->name, rx_done, tx_done, limit);
-	return rx_done;
+	return limit;
 
 oom:
 	if (netif_msg_rx_err(ag))

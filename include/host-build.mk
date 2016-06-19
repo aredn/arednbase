@@ -50,12 +50,17 @@ define Host/Prepare
   $(call Host/Prepare/Default)
 endef
 
+ifeq ($(HOST_OS),Darwin)
+  HOST_CFLAGS += -I/usr/local/opt/openssl/include
+  HOST_LDFLAGS += -L/usr/local/opt/openssl/lib
+endif
+
 HOST_CONFIGURE_VARS = \
 	CC="$(HOSTCC)" \
 	CFLAGS="$(HOST_CFLAGS)" \
 	CPPFLAGS="$(HOST_CPPFLAGS)" \
 	LDFLAGS="$(HOST_LDFLAGS)" \
-	SHELL="$(BASH)"
+	SHELL="$(SHELL)"
 
 HOST_CONFIGURE_ARGS = \
 	--target=$(GNU_HOST_NAME) \
@@ -72,12 +77,6 @@ HOST_CONFIGURE_ARGS = \
 HOST_MAKE_FLAGS =
 
 HOST_CONFIGURE_CMD = $(BASH) ./configure
-
-ifneq ($(HOST_OS),Darwin)
-  ifeq ($(CONFIG_BUILD_STATIC_TOOLS),y)
-    HOST_STATIC_LINKING = -static
-  endif
-endif
 
 define Host/Configure/Default
 	$(if $(HOST_CONFIGURE_PARALLEL),+)(cd $(HOST_BUILD_DIR)/$(3); \
@@ -137,6 +136,7 @@ define Host/Exports/Default
   $(1) : export STAGING_PREFIX=$$(STAGING_DIR_HOST)
   $(1) : export PKG_CONFIG_PATH=$$(STAGING_DIR_HOST)/lib/pkgconfig
   $(1) : export PKG_CONFIG_LIBDIR=$$(STAGING_DIR_HOST)/lib/pkgconfig
+  $(1) : export CCACHE_DIR:=$(STAGING_DIR_HOST)/ccache
 endef
 Host/Exports=$(Host/Exports/Default)
 
@@ -174,6 +174,7 @@ ifndef DUMP
 		$(call Host/Install)
 		$(foreach hook,$(Hooks/HostInstall/Post),$(call $(hook))$(sep))
 		mkdir -p $$(shell dirname $$@)
+		touch $(HOST_STAMP_BUILT)
 		touch $$@
 
   ifndef STAMP_BUILT

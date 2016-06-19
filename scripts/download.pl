@@ -11,14 +11,18 @@ use warnings;
 use File::Basename;
 use File::Copy;
 
-@ARGV > 2 or die "Syntax: $0 <target dir> <filename> <md5sum> [<mirror> ...]\n";
+@ARGV > 2 or die "Syntax: $0 <target dir> <filename> <md5sum> <url filename> [<mirror> ...]\n";
 
+my $url_filename;
 my $target = shift @ARGV;
 my $filename = shift @ARGV;
 my $md5sum = shift @ARGV;
+$url_filename = shift @ARGV unless $ARGV[0] =~ /:\/\//;
 my $scriptdir = dirname($0);
 my @mirrors;
 my $ok;
+
+$url_filename or $url_filename = $filename;
 
 sub localmirrors {
 	my @mlist;
@@ -39,6 +43,9 @@ sub localmirrors {
 		}
 		close CONFIG;
 	};
+
+	my $mirror = $ENV{'DOWNLOAD_MIRROR'};
+	$mirror and push @mlist, split(/;/, $mirror);
 
 	return @mlist;
 }
@@ -103,7 +110,7 @@ sub download
 			return;
 		}
 	} else {
-		open WGET, "wget -t5 --timeout=20 --no-check-certificate $options -O- '$mirror/$filename' |" or die "Cannot launch wget.\n";
+		open WGET, "wget -t5 --timeout=20 --no-check-certificate $options -O- '$mirror/$url_filename' |" or die "Cannot launch wget.\n";
 		open MD5SUM, "| $md5cmd > '$target/$filename.md5sum'" or die "Cannot launch md5sum.\n";
 		open OUTPUT, "> $target/$filename.dl" or die "Cannot create file $target/$filename.dl: $!\n";
 		my $buffer;
@@ -157,6 +164,11 @@ foreach my $mirror (@ARGV) {
 		push @mirrors, "ftp://ftp.belnet.be/mirror/ftp.gnu.org/gnu/$1";
 		push @mirrors, "ftp://ftp.mirror.nl/pub/mirror/gnu/$1";
 		push @mirrors, "http://mirror.switch.ch/ftp/mirror/gnu/$1";
+	} elsif ($mirror =~ /^\@SAVANNAH\/(.+)$/) {
+		push @mirrors, "http://download.savannah.gnu.org/releases/$1";
+		push @mirrors, "http://nongnu.uib.no/$1";
+		push @mirrors, "http://ftp.igh.cnrs.fr/pub/nongnu/$1";
+		push @mirrors, "http://download-mirror.savannah.gnu.org/releases/$1";
 	} elsif ($mirror =~ /^\@KERNEL\/(.+)$/) {
 		my @extra = ( $1 );
 		if ($filename =~ /linux-\d+\.\d+(?:\.\d+)?-rc/) {
