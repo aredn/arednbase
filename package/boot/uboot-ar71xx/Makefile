@@ -44,7 +44,7 @@ define Package/uboot-ar71xx-$(1)
   TITLE:=$(2)
   DEPENDS:=@TARGET_ar71xx_generic
   URL:=http://www.denx.de/wiki/U-Boot
-  DEFAULT:=y if (TARGET_ar71xx_generic_NBG_460N_550N_550NH || TARGET_ar71xx_generic_Default || CONFIG_TARGET_ar71xx_generic_Minimal)
+  DEFAULT:=n
   VARIANT:=$(1)
 endef
 endef
