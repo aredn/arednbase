@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=iperf
 PKG_VERSION:=2.0.5
-PKG_RELEASE:=1bbhn1
+PKG_RELEASE:=1bbhn2
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(BUILD_VARIANT)/$(PKG_NAME)-$(PKG_VERSION)
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
@@ -85,6 +85,16 @@ define Package/iperf/install
 	$(INSTALL_BIN) ./files/iperf.firewall $(1)/etc/local/mesh-firewall/20-iperf2
 endef
 Package/iperf-mt/install = $(Package/iperf/install)
+
+define Package/iperf/postinst
+#!/bin/sh
+# check if we are on real system
+if [ -z "$${IPKG_INSTROOT}" ]; then
+        echo "Restarting Firewall"
+        /etc/init.d/firewall restart
+fi
+exit 0
+endef
 
 $(eval $(call BuildPackage,iperf))
 $(eval $(call BuildPackage,iperf-mt))
