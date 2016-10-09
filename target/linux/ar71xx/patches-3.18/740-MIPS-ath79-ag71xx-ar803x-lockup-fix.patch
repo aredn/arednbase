@@ -1,0 +1,218 @@
+--- a/drivers/net/ethernet/atheros/ag71xx/ag71xx.h
++++ b/drivers/net/ethernet/atheros/ag71xx/ag71xx.h
+@@ -37,8 +37,10 @@
+ #include <asm/mach-ath79/ath79.h>
+ #include <asm/mach-ath79/ag71xx_platform.h>
+ 
++#include <asm/addrspace.h>
++
+ #define AG71XX_DRV_NAME		"ag71xx"
+-#define AG71XX_DRV_VERSION	"0.5.35"
++#define AG71XX_DRV_VERSION	"0.5.35.AREDN"
+ 
+ #define AG71XX_NAPI_WEIGHT	64
+ #define AG71XX_OOM_REFILL	(1 + HZ/10)
+@@ -178,6 +180,7 @@ struct ag71xx {
+ 
+ #ifdef CONFIG_AG71XX_DEBUG_FS
+ 	struct ag71xx_debug	debug;
++	unsigned int gpio_reset_count;
+ #endif
+ };
+ 
+@@ -362,6 +365,36 @@ ag71xx_ring_desc(struct ag71xx_ring *rin
+ #define RX_STATUS_OF		BIT(2)	/* Rx Overflow */
+ #define RX_STATUS_BE		BIT(3)	/* Bus Error */
+ 
++/* GPIO phy reset registers */
++#define AR934X_REG_GPIO_OE_ADDRESS	0x18040000
++#define AR934X_REG_GPIO_OUT			0x18040008
++#define AR934X_REG_GPIO_SET			0x1804000C
++#define AR934X_REG_GPIO_CLEAR		0x18040010
++#define AR934X_EXPECTED_ID1			0x4d
++#define AR934X_PHY_ID1				2
++
++typedef unsigned int ath_reg_t;
++
++#define ath_reg_rd(_phys)       (*(volatile ath_reg_t *)KSEG1ADDR(_phys))
++
++#define ath_reg_wr_nf(_phys, _val) \
++        ((*(volatile ath_reg_t *)KSEG1ADDR(_phys)) = (_val))
++
++#define ath_reg_wr(_phys, _val) do {    \
++        ath_reg_wr_nf(_phys, _val);     \
++        ath_reg_rd(_phys);              \
++} while(0)
++
++#define ath_reg_rmw_set(_reg, _mask)    do {                    \
++        ath_reg_wr((_reg), (ath_reg_rd((_reg)) | (_mask)));     \
++        ath_reg_rd((_reg));                                     \
++} while(0)
++
++#define ath_reg_rmw_clear(_reg, _mask) do {                     \
++	    ath_reg_wr((_reg), (ath_reg_rd((_reg)) & ~(_mask)));    \
++		ath_reg_rd((_reg));                                     \
++} while(0)
++
+ static inline void ag71xx_check_reg_offset(struct ag71xx *ag, unsigned reg)
+ {
+ 	switch (reg) {
+@@ -482,4 +515,6 @@ u16 ar7240sw_phy_read(struct mii_bus *mi
+ int ar7240sw_phy_write(struct mii_bus *mii, unsigned phy_addr,
+ 		       unsigned reg_addr, u16 reg_val);
+ 
++void ag71xx_check_reset(struct ag71xx *ag, bool reset);
++
+ #endif /* _AG71XX_H */
+--- a/drivers/net/ethernet/atheros/ag71xx/ag71xx_debugfs.c
++++ b/drivers/net/ethernet/atheros/ag71xx/ag71xx_debugfs.c
+@@ -238,6 +238,35 @@ static const struct file_operations ag71
+ 	.owner	= THIS_MODULE
+ };
+ 
++static ssize_t read_gpio_reset(struct file *file, char __user *user_buf,
++							   size_t count, loff_t *ppos)
++{
++	struct ag71xx *ag = file->private_data;
++	char buf[16];
++	unsigned int len = 0;
++
++	len += snprintf(buf + len, sizeof(buf) - len, "%u\n", ag->gpio_reset_count);
++
++	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
++}
++
++static ssize_t write_gpio_reset(struct file *file, const char __user *user_buf,
++								size_t size, loff_t *ppos)
++{
++	struct ag71xx *ag = file->private_data;
++
++	ag71xx_check_reset(ag, true);
++
++	return size;
++}
++
++static const struct file_operations ag71xx_gpio_reset = {
++	.open	= ag71xx_debugfs_generic_open,
++	.read	= read_gpio_reset,
++	.write  = write_gpio_reset,
++	.owner	= THIS_MODULE
++};
++
+ void ag71xx_debugfs_exit(struct ag71xx *ag)
+ {
+ 	debugfs_remove_recursive(ag->debug.debugfs_dir);
+@@ -263,6 +292,11 @@ int ag71xx_debugfs_init(struct ag71xx *a
+ 	debugfs_create_file("rx_ring", S_IRUGO, ag->debug.debugfs_dir,
+ 			    ag, &ag71xx_fops_rx_ring);
+ 
++	ag->gpio_reset_count = 0;
++
++	debugfs_create_file("gpio_reset", S_IRUGO, ag->debug.debugfs_dir,
++			    ag, &ag71xx_gpio_reset);
++
+ 	return 0;
+ }
+ 
+--- a/drivers/net/ethernet/atheros/ag71xx/ag71xx_main.c
++++ b/drivers/net/ethernet/atheros/ag71xx/ag71xx_main.c
+@@ -493,6 +493,90 @@ static void ag71xx_hw_init(struct ag71xx
+ 	ag71xx_dma_reset(ag);
+ }
+ 
++static void ag71xx_gpio_reset(struct ag71xx *ag) {
++    pr_info("ag71xx_gpio_reset triggered\n");
++
++    if ((ath_reg_rd(AR934X_REG_GPIO_OUT) & BIT(0)) == 0) {
++        // Set GPIO0 to 1 (not in reset)
++        ath_reg_wr(AR934X_REG_GPIO_SET, BIT(0));
++    }
++
++    if (ath_reg_rd(AR934X_REG_GPIO_OE_ADDRESS) & BIT(0)) {
++        // Set GPIO0 as output
++        ath_reg_rmw_clear(AR934X_REG_GPIO_OE_ADDRESS, BIT(0));
++    }
++
++    ath_reg_wr(AR934X_REG_GPIO_CLEAR, BIT(0));
++    mdelay(2);
++    ath_reg_wr(AR934X_REG_GPIO_SET, BIT(0));
++    mdelay(2);
++}
++
++void ag71xx_check_reset(struct ag71xx *ag, bool reset)
++{
++    int retries;
++    struct phy_device *phydev = ag->phy_dev;
++    struct net_device *dev = ag->dev;
++    uint16_t phy_id;
++    u32 rx_ds;
++    u32 mii_reg;
++
++    if (!soc_is_ar934x()) return;
++
++    phy_id = phy_read(phydev, AR934X_PHY_ID1);
++
++    if (!reset && phy_id == AR934X_EXPECTED_ID1) {
++        //No PHY hang detected
++        return;
++    }
++
++    pr_info("ag71xx_check_reset: expected: %04x, got: %04x\n", AR934X_EXPECTED_ID1, phy_id);
++
++    ag71xx_hw_stop(ag);
++    wmb();
++
++    mii_reg = ag71xx_rr(ag, AG71XX_REG_MII_CFG);
++    rx_ds = ag71xx_rr(ag, AG71XX_REG_RX_DESC);
++
++    ag71xx_gpio_reset(ag);
++
++    phy_id = phy_read(phydev, AR934X_PHY_ID1);
++
++    retries = 102; //To be sure last try > 10ms after reset
++
++    while (phy_id != AR934X_EXPECTED_ID1 && --retries) {
++        phy_id = phy_read(phydev, AR934X_PHY_ID1);
++        udelay(100);
++    }
++
++    phy_id = phy_read(phydev, AR934X_PHY_ID1);
++
++    if (phy_id != AR934X_EXPECTED_ID1) return;
++
++    ag71xx_dma_reset(ag);
++    ag71xx_hw_setup(ag);
++    ag71xx_tx_packets(ag, true);
++    ag->tx_ring.curr = 0;
++    ag->tx_ring.dirty = 0;
++    netdev_reset_queue(ag->dev);
++
++    /* setup max frame length */
++    ag71xx_wr(ag, AG71XX_REG_MAC_MFL,
++        ag71xx_max_frame_len(ag->dev->mtu));
++
++    ag71xx_wr(ag, AG71XX_REG_RX_DESC, rx_ds);
++    ag71xx_wr(ag, AG71XX_REG_TX_DESC, ag->tx_ring.descs_dma);
++    ag71xx_wr(ag, AG71XX_REG_MII_CFG, mii_reg);
++
++    ag71xx_hw_set_macaddr(ag, dev->dev_addr);
++
++#ifdef CONFIG_AG71XX_DEBUG_FS
++    ag->gpio_reset_count++;
++#endif
++
++    return;
++}
++
+ static void ag71xx_fast_reset(struct ag71xx *ag)
+ {
+ 	struct ag71xx_platform_data *pdata = ag71xx_get_pdata(ag);
+@@ -552,6 +636,8 @@ __ag71xx_link_adjust(struct ag71xx *ag,
+ 	u32 fifo5;
+ 	u32 fifo3;
+ 
++	ag71xx_check_reset(ag, false);
++
+ 	if (!ag->link && update) {
+ 		ag71xx_hw_stop(ag);
+ 		netif_carrier_off(ag->dev);
