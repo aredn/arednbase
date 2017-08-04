@@ -1406,7 +1406,7 @@ define Image/Build/UBNT2
 		dd if=$(call sysupname,$(1),$(2)) of=$(KDIR_TMP)/$(2)-mtdpart-kernel.bin bs=1024k count=1; \
 		dd if=$(call sysupname,$(1),$(2)) of=$(KDIR_TMP)/$(2)-mtdpart-rootfs.bin bs=1024k skip=1; \
 		$(STAGING_DIR_HOST)/bin/mkfwimage \
-			-B $(4) -v $(5).$(6).v6.0.0-OpenWrt-$(REVISION) \
+			-B $(4) -v $(5).$(6).v6.0.6.31296.170704.204 \
 			-k $(KDIR_TMP)/$(2)-mtdpart-kernel.bin \
 			-r $(KDIR_TMP)/$(2)-mtdpart-rootfs.bin \
 			-o $(call factoryname,$(1),$(2)); \
