@@ -1,0 +1,56 @@
+--- a/initd/early.c
++++ b/initd/early.c
+@@ -20,10 +20,37 @@
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include <stdlib.h>
++#include <string.h>
+ 
+ #include "init.h"
+ #include "../libc-compat.h"
+ 
++static long
++proc_memsize(void)
++{
++	FILE *fp;
++	char line[256];
++	char *key;
++	long val = 16384;
++
++	fp = fopen("/proc/meminfo", "r");
++	if (fp == NULL) {
++		ERROR("Can't open /proc/meminfo: %s\n", strerror(errno));
++		return errno;
++	}
++
++	while (fgets(line, sizeof(line), fp)) {
++		key = strtok(line, ":");
++		if (strcasecmp(key, "MemTotal"))
++			continue;
++		val = atol(strtok(NULL, " kB\n"));
++		break;
++	}
++	fclose(fp);
++
++	return val;
++}
++
+ static void
+ early_dev(void)
+ {
+@@ -73,8 +100,14 @@ early_mounts(void)
+ 	early_dev();
+ 
+ 	early_console("/dev/console");
++
+ 	if (mount_zram_on_tmp()) {
+-		mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, 0);
++		// on 32MB or less RAM devices limit tmpfs to 6.5Mb
++		if (proc_memsize() <= 32768) {
++			mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, "size=6656K");
++		} else {
++			mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV | MS_NOATIME, 0);
++		}
+ 		mkdir("/tmp/shm", 01777);
+ 	} else {
+ 		mkdir("/tmp/shm", 01777);
