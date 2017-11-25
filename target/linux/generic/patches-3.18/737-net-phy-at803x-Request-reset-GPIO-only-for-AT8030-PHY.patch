@@ -1,0 +1,58 @@
+From patchwork Wed Mar 23 10:49:09 2016
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+Subject: net: phy: at803x: Request 'reset' GPIO only for AT8030 PHY
+From: Sebastian Frias <sf84@laposte.net>
+X-Patchwork-Id: 8649041
+Message-Id: <56F274A5.6030502@laposte.net>
+To: =?windows-1252?Q?Uwe_Kleine-K=F6nig?= <u.kleine-koenig@pengutronix.de>
+Cc: Daniel Mack <daniel@zonque.org>,
+ "David S. Miller" <davem@davemloft.net>, netdev@vger.kernel.org,
+ lkml <linux-kernel@vger.kernel.org>, mason <slash.tmp@free.fr>,
+ Florian Fainelli <f.fainelli@gmail.com>, Mans Rullgard <mans@mansr.com>,
+ Fabio Estevam <festevam@gmail.com>,
+ Martin Blumenstingl <martin.blumenstingl@gmail.com>,
+ Linus Walleij <linus.walleij@linaro.org>
+Date: Wed, 23 Mar 2016 11:49:09 +0100
+
+This removes the dependency on GPIOLIB for non faulty PHYs.
+
+Indeed, without this patch, if GPIOLIB is not selected
+devm_gpiod_get_optional() will return -ENOSYS and the driver probe
+call will fail, regardless of the actual PHY hardware.
+
+Out of the 3 PHYs supported by this driver (AT8030, AT8031, AT8035),
+only AT8030 presents the issues that commit 13a56b449325 ("net: phy:
+at803x: Add support for hardware reset") attempts to work-around by
+using a 'reset' GPIO line.
+
+Hence, only AT8030 should depend on GPIOLIB operating properly.
+
+Fixes: 13a56b449325 ("net: phy: at803x: Add support for hardware reset")
+
+Signed-off-by: Sebastian Frias <sf84@laposte.net>
+---
+ drivers/net/phy/at803x.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/drivers/net/phy/at803x.c b/drivers/net/phy/at803x.c
+--- a/drivers/net/phy/at803x.c
++++ b/drivers/net/phy/at803x.c
+@@ -251,12 +251,16 @@ static int at803x_probe(struct phy_device *phydev)
+ 	if (!priv)
+ 		return -ENOMEM;
+
++	if (phydev->drv->phy_id != ATH8030_PHY_ID)
++		goto does_not_require_reset_workaround;
++
+ 	gpiod_reset = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
+ 	if (IS_ERR(gpiod_reset))
+ 		return PTR_ERR(gpiod_reset);
+
+ 	priv->gpiod_reset = gpiod_reset;
+
++does_not_require_reset_workaround:
+ 	phydev->priv = priv;
+
+ 	return 0;
